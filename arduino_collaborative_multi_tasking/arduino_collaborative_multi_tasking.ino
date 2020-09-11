@@ -1,64 +1,81 @@
 #include <Scheduler.h>
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
+#include <ESP8266mDNS.h>
 
-uint8_t Relay1pin = 2;
-bool Relay1status = LOW;
+#ifndef STASSID
+#define STASSID "node"
+#define STAPSK  "nodenode"
+#endif
 
-uint8_t Relay2pin = 14;
-bool Relay2status = LOW;
+const uint8_t Touch1pin = 5;
+const uint8_t Relay1pin = 0;
+bool Relay1status = HIGH;
 
-uint8_t Relay3pin = 12;
-bool Relay3status = LOW;
+const uint8_t Touch2pin = 4;
+const uint8_t Relay2pin = 2;
+bool Relay2status = HIGH;
 
-uint8_t Relay4pin = 13;
-bool Relay4status = LOW;
+const uint8_t Touch3pin = 13;
+const uint8_t Relay3pin = 14;
+bool Relay3status = HIGH;
+
+const uint8_t Touch4pin = 15;
+const uint8_t Relay4pin = 12;
+bool Relay4status = HIGH;
 
 ESP8266WebServer server(80);
 
 class TouchTask: public Task {
   private:
     uint8_t pinIN;
-    uint8_t* pinOUT;
+    uint8_t pinOUT;
     bool* out;
   protected:
     void setup(){
       Serial.print("Init GPIO");  Serial.println(pinIN);
-      pinMode(pinIN, INPUT);
     }
     void loop(){
       if(digitalRead(pinIN)){
         *out = *out == HIGH ? LOW : HIGH;
-        digitalWrite(*pinOUT, *out);
-        //Serial.print("GPIO");  Serial.print(*pinOUT);  Serial.print(": ");  Serial.println(*out);
-        delay(500);
-        while(digitalRead(pinIN));
+        digitalWrite(pinOUT, *out);
+        Serial.print("GPIO");  Serial.print(pinOUT);  Serial.print(": ");  Serial.println(*out);
+        while(digitalRead(pinIN)){
+          delay(100);
+        }
       }
     }
   public:
-    TouchTask(uint8_t pinIN, uint8_t* pinOUT, bool* out){
+    TouchTask(uint8_t pinIN, uint8_t pinOUT, bool* out){
       this->pinIN = pinIN;
       this->pinOUT = pinOUT;
       this->out = out;
     }
-} tt4(16, &Relay1pin,&Relay1status), tt5(5, &Relay2pin,&Relay2status), tt6(4, &Relay3pin,&Relay3status), tt7(0, &Relay4pin,&Relay4status);
+} tt1(Touch1pin, Relay1pin,&Relay1status), 
+  tt2(Touch2pin, Relay2pin,&Relay2status), 
+  tt3(Touch3pin, Relay3pin,&Relay3status), 
+  tt4(Touch4pin, Relay4pin,&Relay4status);
+
 
 class WiFiServerTask: public Task {
-  private:
-    const char* ssid = "node_work";
-    const char* password = "node_work";
   protected:
     void setup() {
-      Serial.print("Connecting to ");  Serial.println(ssid);
-      WiFi.begin(ssid, password);
+      Serial.print("Connecting to ");  Serial.println(STASSID);
+      WiFi.mode(WIFI_STA);
+      WiFi.begin(STASSID, STAPSK);
       while (WiFi.status() != WL_CONNECTED) {
-        delay(1000);
+        delay(500);
         Serial.print(".");
       }
       Serial.println("");
       Serial.println("WiFi connected..!");
       Serial.print("Got IP: ");  Serial.println(WiFi.localIP());
-
+      
+      if (!MDNS.begin("node")) {             // Start the mDNS responder for node.local
+        Serial.println("Error setting up MDNS responder!");
+      }
+      Serial.println("mDNS responder started");
+      
       server.on("/", handle_OnConnect);
       
       server.on("/relay1on", handle_relay1on);
@@ -204,17 +221,22 @@ void setup() {
   Serial.begin(9600);
   Serial.println("starting");
   
+  delay(1000);
+  
   pinMode(Relay1pin, OUTPUT);
   pinMode(Relay2pin, OUTPUT);
   pinMode(Relay3pin, OUTPUT);
   pinMode(Relay4pin, OUTPUT);
   
-  delay(1000);
+  pinMode(Touch1pin, INPUT);
+  pinMode(Touch2pin, INPUT);
+  pinMode(Touch3pin, INPUT);
+  pinMode(Touch4pin, INPUT);
 
+  Scheduler.start(&tt1);
+  Scheduler.start(&tt2);
+  Scheduler.start(&tt3);
   Scheduler.start(&tt4);
-  Scheduler.start(&tt5);
-  Scheduler.start(&tt6);
-  Scheduler.start(&tt7);
 
   Scheduler.start(&server_task);
 
